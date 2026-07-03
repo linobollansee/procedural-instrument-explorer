@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Procedural Instrument Explorer</title>
+
+<style>
+body{
+    background:#222;
+    color:white;
+    font-family:Arial,sans-serif;
+    text-align:center;
+    margin:30px;
+}
+
+button,input,select{
+    font-size:16px;
+    margin:6px;
+}
+
+#keyboard{
+    margin-top:20px;
+}
+
+.key{
+    width:56px;
+    height:140px;
+    margin:2px;
+    font-size:14px;
+}
+
+label{
+    display:inline-block;
+    width:120px;
+    text-align:right;
+}
+
+small{
+    color:#bbb;
+}
+</style>
+</head>
+<body>
+
+<h2>Procedural Instrument Explorer</h2>
+
+<p>
+Click <b>Enable Audio</b>, adjust the timbre controls, or hit
+<b>🎲 Randomize Instrument</b>.
+</p>
+
+<button id="enable">Enable Audio</button>
+<button id="randomize">🎲 Randomize Instrument</button>
+
+<hr>
+
+<div>
+
+<label>Wave 1</label>
+<select id="wave1">
+<option>sine</option>
+<option>square</option>
+<option selected>triangle</option>
+<option>sawtooth</option>
+</select>
+
+<br>
+
+<label>Wave 2</label>
+<select id="wave2">
+<option>sine</option>
+<option selected>square</option>
+<option>triangle</option>
+<option>sawtooth</option>
+</select>
+
+<br>
+
+<label>Harmonic</label>
+<input id="harmonic" type="range"
+min="0.5" max="4"
+step="0.5"
+value="2">
+<span id="harmonicValue">2</span>
+
+<br>
+
+<label>Filter</label>
+<select id="filterType">
+<option>lowpass</option>
+<option>highpass</option>
+<option selected>bandpass</option>
+</select>
+
+<br>
+
+<label>Cutoff</label>
+<input id="cutoff"
+type="range"
+min="200"
+max="8000"
+value="3000">
+<span id="cutoffValue">3000</span>
+
+<br>
+
+<label>Attack</label>
+<input id="attack"
+type="range"
+min="0.001"
+max="0.05"
+step="0.001"
+value="0.003">
+<span id="attackValue">0.003</span>
+
+<br>
+
+<label>Decay</label>
+<input id="decay"
+type="range"
+min="0.01"
+max="0.5"
+step="0.01"
+value="0.12">
+<span id="decayValue">0.12</span>
+
+<br>
+
+<label>Pitch Sweep</label>
+<input id="sweep"
+type="range"
+min="-600"
+max="600"
+value="0">
+<span id="sweepValue">0</span>
+
+<br>
+
+<label>Second Osc</label>
+<input id="mix"
+type="range"
+min="0"
+max="1"
+step="0.01"
+value="0.3">
+<span id="mixValue">0.3</span>
+
+</div>
+
+<hr>
+
+<h3>Keyboard</h3>
+<p>A W S E D F T G Y H U J</p>
+
+<div id="keyboard"></div>
+
+<script>
+
+let ctx;
+
+const wave1=document.getElementById("wave1");
+const wave2=document.getElementById("wave2");
+const harmonic=document.getElementById("harmonic");
+const filterType=document.getElementById("filterType");
+const cutoff=document.getElementById("cutoff");
+const attack=document.getElementById("attack");
+const decay=document.getElementById("decay");
+const sweep=document.getElementById("sweep");
+const mix=document.getElementById("mix");
+
+document.getElementById("enable").onclick=async()=>{
+
+    if(!ctx)
+        ctx=new AudioContext();
+
+    await ctx.resume();
+
+};
+
+const names=[
+"C","C#","D","D#","E","F",
+"F#","G","G#","A","A#","B"
+];
+
+const keyMap=[
+"a","w","s","e","d","f",
+"t","g","y","h","u","j"
+];
+
+const keyboard=document.getElementById("keyboard");
+
+for(let i=60;i<72;i++){
+
+    const b=document.createElement("button");
+
+    b.className="key";
+
+    const index=i-60;
+
+    b.innerHTML=
+        names[i%12]+
+        "<br><small>"+
+        keyMap[index].toUpperCase()+
+        "</small>";
+
+    b.onclick=()=>play(i);
+
+    keyboard.appendChild(b);
+
+}
+
+function midiToFreq(note){
+
+    return 440*Math.pow(
+        2,
+        (note-69)/12
+    );
+
+}
+
+function play(note){
+
+    if(!ctx)return;
+
+    const now=ctx.currentTime;
+
+    const osc1=ctx.createOscillator();
+    const osc2=ctx.createOscillator();
+
+    const mixGain=ctx.createGain();
+    const gain=ctx.createGain();
+    const filter=ctx.createBiquadFilter();
+
+    osc1.type=wave1.value;
+    osc2.type=wave2.value;
+
+    const freq=midiToFreq(note);
+
+    osc1.frequency.value=freq;
+
+    osc2.frequency.value=
+        freq*
+        parseFloat(harmonic.value);
+
+    mixGain.gain.value=
+        parseFloat(mix.value);
+
+    filter.type=
+        filterType.value;
+
+    filter.frequency.value=
+        parseFloat(cutoff.value);
+
+    gain.gain.setValueAtTime(
+        0,
+        now
+    );
+
+    gain.gain.linearRampToValueAtTime(
+        0.3,
+        now+
+        parseFloat(attack.value)
+    );
+
+    gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        now+
+        parseFloat(decay.value)
+    );
+
+    osc1.frequency.linearRampToValueAtTime(
+        freq+
+        parseFloat(sweep.value),
+        now+
+        parseFloat(decay.value)
+    );
+
+    osc1.connect(filter);
+
+    osc2.connect(mixGain);
+    mixGain.connect(filter);
+
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc1.start(now);
+    osc2.start(now);
+
+    osc1.stop(
+        now+
+        parseFloat(decay.value)+
+        0.05
+    );
+
+    osc2.stop(
+        now+
+        parseFloat(decay.value)+
+        0.05
+    );
+
+}
+
+const pressed={};
+
+document.addEventListener("keydown",e=>{
+
+    if(pressed[e.key]) return;
+
+    const index=
+        keyMap.indexOf(
+            e.key.toLowerCase()
+        );
+
+    if(index!==-1){
+
+        pressed[e.key]=true;
+
+        play(60+index);
+
+    }
+
+});
+
+document.addEventListener("keyup",e=>{
+
+    pressed[e.key]=false;
+
+});
+
+[
+harmonic,
+cutoff,
+attack,
+decay,
+sweep,
+mix
+].forEach(x=>{
+
+    x.oninput=()=>{
+
+        document.getElementById(
+            x.id+"Value"
+        ).textContent=x.value;
+
+    };
+
+});
+
+function randomBetween(min,max,step){
+
+    const count=Math.round((max-min)/step);
+
+    return (
+        min+
+        Math.floor(Math.random()*(count+1))*step
+    ).toFixed(
+        (step.toString().split(".")[1]||"").length
+    );
+
+}
+
+document.getElementById("randomize").onclick=()=>{
+
+    const waves=[
+        "sine",
+        "square",
+        "triangle",
+        "sawtooth"
+    ];
+
+    const filters=[
+        "lowpass",
+        "highpass",
+        "bandpass"
+    ];
+
+    wave1.value=
+        waves[Math.floor(Math.random()*waves.length)];
+
+    wave2.value=
+        waves[Math.floor(Math.random()*waves.length)];
+
+    filterType.value=
+        filters[Math.floor(Math.random()*filters.length)];
+
+    harmonic.value=
+        randomBetween(0.5,4,0.5);
+
+    cutoff.value=
+        randomBetween(200,8000,1);
+
+    attack.value=
+        randomBetween(0.001,0.05,0.001);
+
+    decay.value=
+        randomBetween(0.01,0.5,0.01);
+
+    sweep.value=
+        randomBetween(-600,600,1);
+
+    mix.value=
+        randomBetween(0,1,0.01);
+
+    [
+        harmonic,
+        cutoff,
+        attack,
+        decay,
+        sweep,
+        mix
+    ].forEach(x=>{
+
+        document.getElementById(
+            x.id+"Value"
+        ).textContent=x.value;
+
+    });
+
+};
+
+</script>
+
+</body>
+</html>
